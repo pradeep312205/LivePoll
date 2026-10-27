@@ -45,6 +45,9 @@ function Landing() {
 }
 
 function AuthPage({ signup = false }) {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const notice = !signup ? location.state?.notice : ''
   const [form, setForm] = useState({ name: '', email: '', password: '' })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -54,9 +57,15 @@ function AuthPage({ signup = false }) {
     setError('')
     try {
       const { data } = await api.post(`/auth/${signup ? 'register' : 'login'}`, form)
+      if (signup) {
+        localStorage.removeItem('livepoll-token')
+        localStorage.removeItem('livepoll-user')
+        navigate('/login', { replace: true, state: { notice: 'Your account was created. Please sign in to continue.' } })
+        return
+      }
       localStorage.setItem('livepoll-token', data.token)
       localStorage.setItem('livepoll-user', JSON.stringify(data.user))
-      window.location.assign('/dashboard')
+      navigate('/dashboard', { replace: true })
     } catch (requestError) {
       setError(errorMessage(requestError, 'Could not connect to LivePoll. Please try again.'))
     } finally {
@@ -78,6 +87,7 @@ function AuthPage({ signup = false }) {
     {signup && <label>Your name<input autoComplete="name" minLength="2" maxLength="80" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>}
     <label>Email address<input type="email" autoComplete="email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
     <label>Password<input type="password" autoComplete={signup ? 'new-password' : 'current-password'} minLength="8" required value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label>
+    {notice && <div className="success-message" role="status">{notice}</div>}
     {error && <div className="alert" role="alert">{error}</div>}
     <button className="button primary full" type="submit" disabled={busy}>{busy ? 'Please wait…' : signup ? 'Create account' : 'Sign in'} <Icon name="arrow" /></button>
       </form><p className="auth-switch">{signup ? 'Already have an account?' : 'New to LivePoll?'} <Link to={signup ? '/login' : '/signup'}>{signup ? 'Sign in' : 'Create an account'}</Link></p></section><p className="auth-foot">Make every voice count.</p>
@@ -643,3 +653,4 @@ function useOutletContextSafe() { return useOutletContext() }
 export default function App() {
   return <BrowserRouter><Routes><Route path="/" element={<Landing />} /><Route path="/signup" element={<AuthPage signup />} /><Route path="/login" element={<AuthPage />} /><Route path="/dashboard" element={token() ? <DashboardLayout /> : <Navigate to="/login" replace />}><Route index element={<OverviewPage />} /><Route path="polls" element={<MyPollsPage />} /><Route path="create" element={<CreatePollPage />} /><Route path="live" element={<LiveResultsPage />} /><Route path="live/:id" element={<PollPage managed />} /><Route path="analytics" element={<AnalyticsPage />} /><Route path="assistant" element={<AssistantPage />} /><Route path="settings" element={<SettingsPage />} /></Route><Route path="/poll/:id" element={<PollPage />} /><Route path="*" element={<Navigate to="/" replace />} /></Routes></BrowserRouter>
 }
+
