@@ -9,7 +9,7 @@ LivePoll lets a signed-in host create and manage polls, share public voting link
    ```powershell
    docker compose up -d
    ```
-2. Create `backend/.env` with `PORT`, `MONGODB_URI`, `MONGODB_DATABASE`, `REDIS_ADDR`, `JWT_SECRET` (at least 32 characters), and `FRONTEND_ORIGINS=http://localhost:5173`. To enable conversational AI, also set `OPENAI_API_KEY` and optionally `OPENAI_MODEL` (defaults to `gpt-5-mini`). Keep the API key in the backend environment only; never add it to the frontend. Do not commit this file.
+2. Create `backend/.env` with `PORT`, `MONGODB_URI`, `MONGODB_DATABASE`, `REDIS_ADDR` (or a hosted `REDIS_URL`), `JWT_SECRET` (at least 32 characters), and `FRONTEND_ORIGINS=http://localhost:5173`. `REDIS_URL` takes precedence and supports hosted TLS Redis endpoints. To enable conversational AI, also set `OPENAI_API_KEY` and optionally `OPENAI_MODEL` (defaults to `gpt-5-mini`). Keep the API key in the backend environment only; never add it to the frontend. Do not commit this file.
 3. In one PowerShell window run the API:
 
    ```powershell
@@ -74,5 +74,4 @@ Deployment, publication, video recording, and the submission email still need th
 - **2:30–3:30:** Explain the difficult part: preserving accepted votes in MongoDB while keeping Redis counters and SSE updates in step, plus the unique index that rejects duplicate participant votes.
 - **3:30–4:00:** Explain AI use honestly. For example, describe where Codex helped inspect or implement code, what you checked yourself, and any changes you made after reviewing its output. Use your own accurate account.
 - **4:00–4:30:** Mention limitations: participant IDs are browser-local and are not strong anti-abuse identity; Redis Pub/Sub reconnects recover using a fresh snapshot.
-
 

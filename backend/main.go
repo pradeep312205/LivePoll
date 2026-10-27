@@ -27,9 +27,10 @@ func main() {
 
 	mongoURI := os.Getenv("MONGODB_URI")
 	redisAddr := os.Getenv("REDIS_ADDR")
+	redisURL := os.Getenv("REDIS_URL")
 
-	if mongoURI == "" || redisAddr == "" {
-		log.Fatal("MONGODB_URI and REDIS_ADDR must be configured")
+	if mongoURI == "" || (redisAddr == "" && redisURL == "") {
+		log.Fatal("MONGODB_URI and either REDIS_URL or REDIS_ADDR must be configured")
 	}
 	if len(os.Getenv("JWT_SECRET")) < 32 {
 		log.Fatal("JWT_SECRET must contain at least 32 characters")
@@ -82,9 +83,16 @@ func main() {
 	log.Println("User email index ready")
 
 	// Connect to Redis.
-	redisClient := redis.NewClient(&redis.Options{
-		Addr: redisAddr,
-	})
+	var redisClient *redis.Client
+	if redisURL != "" {
+		redisOptions, err := redis.ParseURL(redisURL)
+		if err != nil {
+			log.Fatalf("Invalid REDIS_URL: %v", err)
+		}
+		redisClient = redis.NewClient(redisOptions)
+	} else {
+		redisClient = redis.NewClient(&redis.Options{Addr: redisAddr})
+	}
 	defer redisClient.Close()
 
 	if err := redisClient.Ping(ctx).Err(); err != nil {
