@@ -65,7 +65,7 @@ function AuthPage({ signup = false }) {
       }
       localStorage.setItem('livepoll-token', data.token)
       localStorage.setItem('livepoll-user', JSON.stringify(data.user))
-      navigate('/dashboard', { replace: true })
+      window.location.assign('/dashboard')
     } catch (requestError) {
       setError(errorMessage(requestError, 'Could not connect to LivePoll. Please try again.'))
     } finally {
@@ -365,31 +365,41 @@ function usePollSnapshot(id) {
   const [lastUpdate, setLastUpdate] = useState(null)
   useEffect(() => {
     let alive = true
+    let inFlight = false
+    let lastSnapshot = ''
     // Reset loading and connection state before starting a new poll request.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     setError('')
     setConnection('connecting')
-    api.get(`/polls/${id}`).then(({ data }) => { if (alive) setSnapshot(data) }).catch((requestError) => { if (alive) setError(errorMessage(requestError, 'Could not load this poll.')) }).finally(() => { if (alive) setLoading(false) })
-    const eventsUrl = `${API_BASE}/polls/${encodeURIComponent(id)}/events`
-    const source = new EventSource(eventsUrl)
-    source.addEventListener('snapshot', (event) => {
-      if (!alive) return
-      const data = JSON.parse(event.data)
-      setSnapshot(data)
-      setConnection('live')
-      setLastUpdate(new Date())
-    })
-    source.addEventListener('vote', (event) => {
-      if (!alive) return
-      const update = JSON.parse(event.data)
-      setSnapshot((current) => current ? { ...current, counts: update.counts, total: update.total, gridCounts: update.gridCounts ?? current.gridCounts, rankingScores: update.rankingScores ?? current.rankingScores, textAnswers: update.textAnswers ?? current.textAnswers, correctAnswers: update.correctAnswers ?? current.correctAnswers, poll: { ...current.poll, open: update.open ?? current.poll.open } } : current)
-      setConnection('live')
-      setLastUpdate(new Date())
-    })
-    source.onerror = () => { if (alive) setConnection('reconnecting') }
-    source.onopen = () => { if (alive) setConnection('connecting') }
-    return () => { alive = false; source.close() }
+    setLastUpdate(null)
+    async function refresh() {
+      if (!alive || inFlight) return
+      inFlight = true
+      try {
+        const { data } = await api.get(`/polls/${id}`, { timeout: 10000 })
+        if (!alive) return
+        const serialized = JSON.stringify(data)
+        if (serialized !== lastSnapshot) {
+          lastSnapshot = serialized
+          setSnapshot(data)
+          setLastUpdate(new Date())
+        }
+        setError('')
+        setConnection('live')
+      } catch (requestError) {
+        if (alive) {
+          if (!lastSnapshot) setError(errorMessage(requestError, 'Could not load this poll.'))
+          setConnection('reconnecting')
+        }
+      } finally {
+        inFlight = false
+        if (alive) setLoading(false)
+      }
+    }
+    refresh()
+    const timer = window.setInterval(refresh, 3000)
+    return () => { alive = false; window.clearInterval(timer) }
   }, [id])
   return { snapshot, setSnapshot, loading, error, connection, lastUpdate }
 }
