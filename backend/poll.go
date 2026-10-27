@@ -60,7 +60,13 @@ type Vote struct {
 	Ranking       []string          `bson:"ranking,omitempty"`
 	GridResponses map[string]string `bson:"grid_responses,omitempty"`
 	VoterID       string            `bson:"voter_id"`
+	VoterName     string            `bson:"voter_name,omitempty"`
 	CreatedAt     time.Time         `bson:"created_at"`
+}
+type PollParticipant struct {
+	Name      string    `json:"name"`
+	Response  string    `json:"response"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 type PollHandler struct {
 	Polls, Votes *mongo.Collection
@@ -96,6 +102,7 @@ type VoteRequest struct {
 	Passcode   string            `json:"passcode"`
 	Honeypot   string            `json:"website"`
 	VoterID    string            `json:"voterId"`
+	VoterName  string            `json:"voterName"`
 }
 type EditPollRequest struct {
 	Question string `json:"question"`
@@ -428,6 +435,70 @@ func (h *PollHandler) GetPublic(c *gin.Context) {
 	}
 	c.JSON(200, snap)
 }
+
+func (h *PollHandler) Participants(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	p, err := h.loadPoll(ctx, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Poll not found"})
+		return
+	}
+	owner, _ := c.Get("userID")
+	if owner != p.CreatorID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only the poll owner can view participants"})
+		return
+	}
+	cur, err := h.Votes.Find(ctx, bson.D{{Key: "poll_id", Value: p.ID}}, options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}).SetLimit(500))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not load participants"})
+		return
+	}
+	defer cur.Close(ctx)
+	var votes []Vote
+	if err = cur.All(ctx, &votes); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not load participants"})
+		return
+	}
+	optionText := make(map[string]string, len(p.Options))
+	for _, option := range p.Options {
+		optionText[option.ID] = option.Text
+	}
+	participants := make([]PollParticipant, 0, len(votes))
+	for _, vote := range votes {
+		response := strings.TrimSpace(vote.AnswerText)
+		if response == "" {
+			ids := voteOptionIDs(vote)
+			labels := make([]string, 0, len(ids))
+			for _, id := range ids {
+				if label := optionText[id]; label != "" {
+					labels = append(labels, label)
+				}
+			}
+			if len(labels) > 0 {
+				response = strings.Join(labels, ", ")
+			}
+		}
+		if response == "" && len(vote.Ranking) > 0 {
+			labels := make([]string, 0, len(vote.Ranking))
+			for _, id := range vote.Ranking {
+				if label := optionText[id]; label != "" {
+					labels = append(labels, label)
+				}
+			}
+			response = strings.Join(labels, " → ")
+		}
+		if response == "" && len(vote.GridResponses) > 0 {
+			response = "Completed rating grid"
+		}
+		name := strings.TrimSpace(vote.VoterName)
+		if name == "" {
+			name = "Anonymous participant"
+		}
+		participants = append(participants, PollParticipant{Name: name, Response: response, CreatedAt: vote.CreatedAt})
+	}
+	c.JSON(http.StatusOK, gin.H{"participants": participants})
+}
 func (h *PollHandler) snapshot(ctx context.Context, p Poll) (PollSnapshot, error) {
 	values, err := h.Redis.HGetAll(ctx, countKey(p.ID)).Result()
 	if err != nil {
@@ -609,6 +680,12 @@ func (h *PollHandler) Vote(c *gin.Context) {
 		return false
 	}
 	vote := Vote{PollID: p.ID, VoterID: req.VoterID, CreatedAt: time.Now().UTC()}
+	req.VoterName = strings.TrimSpace(req.VoterName)
+	if len([]rune(req.VoterName)) > 60 {
+		c.JSON(400, gin.H{"error": "Name must be 60 characters or fewer"})
+		return
+	}
+	vote.VoterName = req.VoterName
 	switch pollType {
 	case "open_ended", "word_cloud", "brainstorm", "type_answer":
 		answer := strings.TrimSpace(req.AnswerText)

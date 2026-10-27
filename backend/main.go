@@ -170,6 +170,7 @@ func main() {
 	protected.GET("/auth/me", authHandler.Me)
 	protected.PATCH("/auth/me", authHandler.UpdateProfile)
 	protected.GET("/polls/:id/followers", socialHandler.ListFollowers)
+	protected.GET("/polls/:id/participants", pollHandler.Participants)
 
 	log.Printf("LivePoll API starting on http://localhost:%s", port)
 	if err := router.Run(":" + port); err != nil {

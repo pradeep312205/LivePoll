@@ -99,3 +99,13 @@ html{scroll-behavior:smooth}.landing-header{position:relative;gap:26px}.landing-
 .vote-choice .radio-dot{display:none}
 .vote-choice{touch-action:manipulation;-webkit-tap-highlight-color:rgba(49,107,77,.15)}
 @media(max-width:620px){.vote-choice{min-height:56px;flex-direction:row;align-items:center}.vote-choice input[type="radio"],.vote-choice input[type="checkbox"]{width:22px!important;height:22px!important}}
+.voter-name-field{max-width:440px;margin:12px 0!important}
+.participants-card{margin:16px 0;padding:22px 24px}
+.participants-count{display:grid;min-width:32px;height:32px;place-items:center;border-radius:50%;background:#edf4ef;color:#326448;font-size:12px;font-weight:700}
+.participants-list{display:grid}
+.participant-row{display:flex;align-items:center;gap:11px;padding:12px 0;border-top:1px solid #edf0ea}
+.participant-row>div{min-width:0;flex:1}
+.participant-row b{color:#405649;font-size:11px}
+.participant-row p{margin:4px 0 0;color:#6f7e73;font-size:11px;overflow-wrap:anywhere}
+.participant-row time{color:#929b93;font-size:9px}
+@media(max-width:620px){.participants-card{padding:18px 16px}.participant-row{align-items:flex-start;flex-wrap:wrap}.participant-row time{width:calc(100% - 41px);margin-left:41px}.participant-row p{font-size:12px}}

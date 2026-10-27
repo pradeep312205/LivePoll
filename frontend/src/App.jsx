@@ -467,6 +467,21 @@ function FollowerSignup({ poll }) {
   return <form className="follower-signup" onSubmit={submit}><h3>{poll.followerHeadline || 'Want a say in the next poll?'}</h3><p>Opt in to the poll owner’s audience list. Your email is visible only to the owner; no email is sent by LivePoll.</p><label>Email<input type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>First name <small>(optional)</small><input autoComplete="given-name" maxLength="80" value={firstName} onChange={(event) => setFirstName(event.target.value)} /></label><button className="button primary" disabled={busy}>{busy ? 'Saving…' : 'Follow this poll'}</button>{message && <p className="muted" role="status">{message}</p>}</form>
 }
 
+function PollParticipants({ pollId }) {
+  const [participants, setParticipants] = useState([])
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    let active = true
+    api.get(`/polls/${pollId}/participants`, auth())
+      .then(({ data }) => { if (active) setParticipants(data.participants || []) })
+      .catch((requestError) => { if (active) setError(errorMessage(requestError, 'Could not load participation.')) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [pollId])
+  return <section className="content-card participants-card"><div className="card-heading"><div><h2>Participation</h2><p>Responses and names shared by participants. Names are optional.</p></div><span className="participants-count">{participants.length}</span></div>{error ? <p className="alert" role="alert">{error}</p> : loading ? <p className="muted">Loading participation…</p> : participants.length ? <div className="participants-list">{participants.map((participant, index) => <article className="participant-row" key={`${participant.createdAt}-${index}`}><span className="comment-avatar">{participant.name.slice(0, 1).toUpperCase()}</span><div><b>{participant.name}</b><p>{participant.response || 'Response recorded'}</p></div><time>{new Date(participant.createdAt).toLocaleString()}</time></article>)}</div> : <p className="muted">No one has voted yet. New responses will appear here.</p>}</section>
+}
+
 function PollFollowersManager({ pollId }) {
   const [followers, setFollowers] = useState([])
   const [error, setError] = useState('')
@@ -487,6 +502,7 @@ function PollPage({ managed = false }) {
   const [grid, setGrid] = useState({})
   const [ranking, setRanking] = useState([])
   const [passcode, setPasscode] = useState('')
+  const [voterName, setVoterName] = useState('')
   const [voted, setVoted] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -504,7 +520,7 @@ function PollPage({ managed = false }) {
     const hasResponse = ['open_ended', 'word_cloud', 'brainstorm', 'type_answer'].includes(type) ? answerText.trim() : type === 'rating_grid' ? poll.gridRows?.every((row) => grid[row.id]) : type === 'ranking' ? (ranking.length || poll.options.length) : (poll.allowMultiple ? selectedMany.length : selected)
     if (!hasResponse) { setMessage('Choose or enter your response before submitting.'); return }
     setBusy(true); setMessage('')
-    const payload = { voterId: participantId(), passcode, website: '' }
+    const payload = { voterId: participantId(), voterName: voterName.trim(), passcode, website: '' }
     if (type === 'rating_grid') payload.grid = grid
     else if (type === 'ranking') payload.ranking = ranking.length ? ranking : poll.options.map((option) => option.id)
     else if (['open_ended', 'word_cloud', 'brainstorm', 'type_answer'].includes(type)) payload.answerText = answerText
@@ -526,8 +542,10 @@ function PollPage({ managed = false }) {
   return <div className={`${managed ? 'page-content' : `public-poll-shell poll-theme-${poll.theme || 'engage'}`}`} style={!managed ? wrapperStyle : undefined}>
     {managed ? <PageHeading eyebrow="LIVE RESULTS" title="Poll results" description="Vote totals update live for everyone viewing this poll." action={<Link className="button secondary" to="/dashboard/polls"><Icon name="back" /> My Polls</Link>} /> : <div className="public-poll-brand"><Link to="/" className="brand"><span className="brand-mark">◉</span> LivePoll</Link><span>Make every voice count.</span></div>}
     <ResultsPanel snapshot={snapshot} connection={connection} lastUpdate={lastUpdate} />
+    {managed && <PollParticipants pollId={id} />}
     {managed && poll.followersEnabled && <PollFollowersManager pollId={id} />}
     {!managed && <section className="content-card vote-card"><div className="eyebrow">{poll.open ? 'CAST YOUR VOTE' : localScheduled ? 'VOTING OPENS SOON' : 'VOTING HAS ENDED'}</div>{poll.open ? <><h2>{type === 'rating_grid' ? 'Rate each statement' : type === 'ranking' ? 'Put these answers in order' : type === 'type_answer' ? 'Type your answer' : 'What do you think?'}</h2>
+      <label className="field-label voter-name-field">Your name (optional)<input value={voterName} maxLength="60" disabled={voted} onChange={(event) => setVoterName(event.target.value)} placeholder="Shown to the poll owner" /></label>
       {['open_ended', 'word_cloud', 'brainstorm', 'type_answer'].includes(type) ? <textarea className="answer-text-input" rows="3" maxLength="500" value={answerText} disabled={voted} onChange={(event) => setAnswerText(event.target.value)} placeholder={type === 'brainstorm' ? 'Share one clear idea…' : type === 'word_cloud' ? 'Add a word or short phrase…' : 'Type your response…'} />
         : type === 'rating_grid' ? <div className="rating-grid-vote">{(poll.gridRows || []).map((row) => <fieldset key={row.id}><legend>{row.text}</legend>{poll.options.map((option) => <label key={option.id} className={`grid-rate-choice ${grid[row.id] === option.id ? 'choice-selected' : ''}`}><input type="radio" name={`grid-${row.id}`} checked={grid[row.id] === option.id} disabled={voted} onChange={() => setGrid((current) => ({ ...current, [row.id]: option.id }))} />{option.text}</label>)}</fieldset>)}</div>
           : type === 'ranking' ? <div className="ranking-vote-list">{poll.options.map((option, index) => <div className="ranking-vote-row" key={option.id}><span>{index + 1}</span><b>{option.text}</b><button type="button" disabled={voted || index === 0} aria-label={`Move ${option.text} up`} onClick={() => moveRank(index, -1, poll.options.map((item) => item.id))}>↑</button><button type="button" disabled={voted || index === poll.options.length - 1} aria-label={`Move ${option.text} down`} onClick={() => moveRank(index, 1, poll.options.map((item) => item.id))}>↓</button></div>)}</div>
@@ -537,7 +555,7 @@ function PollPage({ managed = false }) {
       <button className="button primary" disabled={busy || voted || !poll.open} onClick={vote}>{busy ? 'Submitting…' : voted ? 'Response recorded' : 'Submit response'} <Icon name="arrow" /></button>
       </> : <p className="muted">{localScheduled ? `Voting opens ${new Date(poll.opensAt).toLocaleString()}.` : poll.closedMessage || 'This poll is closed. You can still view the results above.'}</p>}{message && <p className={message.startsWith('Your ') ? 'success-message' : 'alert'} role="status">{message}</p>}</section>}
     {showFollowers && <section className="content-card social-card"><FollowerSignup poll={poll} /></section>}
-    {!managed && <PollDiscussion pollId={id} />}
+    <PollDiscussion pollId={id} />
   </div>
 }
 
