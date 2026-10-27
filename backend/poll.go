@@ -40,6 +40,7 @@ type Poll struct {
 	RatingScale        int          `bson:"rating_scale,omitempty" json:"ratingScale,omitempty"`
 	GridRows           []PollOption `bson:"grid_rows,omitempty" json:"gridRows,omitempty"`
 	OpensAt            *time.Time   `bson:"opens_at,omitempty" json:"opensAt,omitempty"`
+	EndsAt              *time.Time   `bson:"ends_at,omitempty" json:"endsAt,omitempty"`
 	CloseAfterVotes    int64        `bson:"close_after_votes,omitempty" json:"closeAfterVotes,omitempty"`
 	ClosedMessage      string       `bson:"closed_message,omitempty" json:"closedMessage,omitempty"`
 	PasscodeHash       string       `bson:"passcode_hash,omitempty" json:"-"`
@@ -78,6 +79,7 @@ type CreatePollRequest struct {
 	ThemeAccent        string   `json:"themeAccent"`
 	Passcode           string   `json:"passcode"`
 	OpensAt            string   `json:"opensAt"`
+	EndsAt              string   `json:"endsAt"`
 	CloseAfterVotes    int64    `json:"closeAfterVotes"`
 	ClosedMessage      string   `json:"closedMessage"`
 	FollowersEnabled   bool     `json:"followersEnabled"`
@@ -155,6 +157,18 @@ func (h *PollHandler) Create(c *gin.Context) {
 			return
 		}
 		poll.OpensAt = &opensAt
+	}
+	if req.EndsAt != "" {
+		endsAt, parseErr := time.Parse(time.RFC3339, req.EndsAt)
+		if parseErr != nil || !endsAt.After(time.Now()) {
+			c.JSON(400, gin.H{"error": "Scheduled end must be a future date and time"})
+			return
+		}
+		if poll.OpensAt != nil && !endsAt.After(*poll.OpensAt) {
+			c.JSON(400, gin.H{"error": "Poll end must be after its start time"})
+			return
+		}
+		poll.EndsAt = &endsAt
 	}
 	if passcode := strings.TrimSpace(req.Passcode); passcode != "" {
 		if len([]rune(passcode)) < 4 || len([]rune(passcode)) > 32 {
@@ -275,7 +289,7 @@ func normalizeQuestionType(value string) string {
 }
 
 func pollCanVote(p Poll, now time.Time) bool {
-	return p.Open && (p.OpensAt == nil || !now.Before(*p.OpensAt))
+	return p.Open && (p.OpensAt == nil || !now.Before(*p.OpensAt)) && (p.EndsAt == nil || now.Before(*p.EndsAt))
 }
 
 func isValidQuestionType(value string) bool {
